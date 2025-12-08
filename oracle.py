@@ -20,7 +20,7 @@ class MoveRequest(BaseModel):
     board: Board | None = None
 
     @model_validator(mode="after")
-    def validate_move_legality(self):
+    def validate_move(self):
         self.board = Board(self.fen)
         self.move = Move.from_uci(self.uci_move)
         if not self.board.is_legal(self.move):
@@ -31,7 +31,7 @@ class MoveResponse(BaseModel):
     game_id: int
     new_fen: str
     game_over: bool
-    result: str   #  ``1-0``, ``0-1`` or ``1/2-1/2`` or ""
+    result: str   # k"1-0", "0-1", "1/2-1/2" or ""
     signature: str
 
 def sign_move(move: MoveRequest, new_fen, result) -> str:
