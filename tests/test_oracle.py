@@ -2,7 +2,7 @@ import random
 
 import pytest
 from fastapi.testclient import TestClient
-from oracle import app # Импортируем наше приложение
+from oracle import app, Result
 import chess
 import os
 client = TestClient(app)
@@ -31,7 +31,7 @@ def test_valid_move_in_progress():
 
     assert data["new_fen"] == expected_board.fen()
     assert data["game_over"] is False
-    assert data["result"] == ""
+    assert data["result"] == Result.in_progress
     assert isinstance(data["signature"], str)
 
 def test_checkmate_move():
@@ -54,7 +54,7 @@ def test_checkmate_move():
     data = response.json()
 
     assert data["game_over"] is True
-    assert data["result"] == "0-1"
+    assert data["result"] == Result.black_win
     assert isinstance(data["signature"], str)
 
 def test_illegal_move_logic():

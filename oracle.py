@@ -1,4 +1,5 @@
 import os
+from enum import IntEnum
 
 from chess import Board, Move
 from fastapi import FastAPI
@@ -9,6 +10,23 @@ from web3 import Web3
 
 load_dotenv()
 app = FastAPI()
+
+class Result(IntEnum):
+    in_progress = 0
+    white_win = 1
+    black_win = 2
+    draw = 3
+
+    @classmethod
+    def _missing_(cls, value):
+        if value == "":
+            return Result.in_progress
+        elif value == "1-0":
+            return Result.white_win
+        elif value == "0-1":
+            return Result.black_win
+        elif value == "1/2-1/2":
+            return Result.draw
 
 
 class MoveRequest(BaseModel):
@@ -31,13 +49,13 @@ class MoveResponse(BaseModel):
     game_id: int
     new_fen: str
     game_over: bool
-    result: str   # k"1-0", "0-1", "1/2-1/2" or ""
+    result: Result
     signature: str
 
-def sign_move(move: MoveRequest, new_fen, result) -> str:
+def sign_move(move: MoveRequest, new_fen, result: Result) -> str:
     """ Sign move (EIP-191)"""
     msg_hash = Web3.solidity_keccak(
-        ["uint256", "string", "string", "string"], [move.game_id, move.fen, new_fen, result]
+        ["uint256", "string", "string", "uint256"], [move.game_id, move.fen, new_fen, result.value]
     )
     signable_message = messages.encode_defunct(hexstr=msg_hash.hex())
     signed_message = Account.sign_message(signable_message, os.getenv("PRIVATE_KEY"))
@@ -56,7 +74,7 @@ def validate_move(move_request: MoveRequest):
     new_fen = board.fen()
     outcome = board.outcome()
     game_over = outcome is not None
-    result = outcome.result() if game_over else ""
+    result = Result(outcome.result() if game_over else "")
     signature = sign_move(move_request, new_fen, result)  # Replace with actual private key management
 
     return MoveResponse(
