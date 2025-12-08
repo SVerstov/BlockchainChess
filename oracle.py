@@ -55,7 +55,7 @@ class MoveResponse(BaseModel):
 def sign_move(move: MoveRequest, new_fen, result: Result) -> str:
     """ Sign move (EIP-191)"""
     msg_hash = Web3.solidity_keccak(
-        ["uint256", "string", "string", "uint256"], [move.game_id, move.fen, new_fen, result.value]
+        ["uint256", "string", "string", "uint8"], [move.game_id, move.fen, new_fen, result.value]
     )
     signable_message = messages.encode_defunct(hexstr=msg_hash.hex())
     signed_message = Account.sign_message(signable_message, os.getenv("PRIVATE_KEY"))

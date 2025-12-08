@@ -3,6 +3,14 @@ pragma solidity ^0.8.26;
 
 error InvalidBetAmount(uint256 required, uint256 sent);
 
+event GameCreated(uint256 indexed gameId, address whitePlayer, uint256 betAmount);
+event GameStarted(uint256 indexed gameId, address whitePlayer, address blackPlayer);
+event MoveMade(uint256 indexed gameId, address player, string newFen);
+event GameEnded(uint256 indexed gameId, address winner, string reason);
+
+
+
+
 contract Chess {
     address public oracleAddress;
     uint256 public moveTimeout = 1 days;
@@ -25,11 +33,15 @@ contract Chess {
         InProgress, WhiteWon, BlackWon, Draw
     }
 
-
     constructor(address _oracleAddress, uint256 _moveTimeout) {
         oracleAddress = _oracleAddress;
         moveTimeout = _moveTimeout; // in days
 
+    }
+
+
+    function isEqualStr(string memory a, string memory b) internal pure returns (bool) {
+        return keccak256(abi.encodePacked(a)) == keccak256(abi.encodePacked(b));
     }
 
     function _getActiveGame(uint256 _gameId) internal view returns (Game storage) {
@@ -50,6 +62,7 @@ contract Chess {
             isActive: true,
             isWhiteTurn: true
         });
+        emit GameCreated(gameCounter, msg.sender, msg.value);
         return gameCounter;
     }
 
@@ -62,13 +75,15 @@ contract Chess {
         }
         game.playerBlack = msg.sender;
         game.betAmount += msg.value;
+        game.lastMoveTimestamp = block.timestamp; // reset timer on game start
+        emit GameStarted(_gameId, game.playerWhite, msg.sender);
     }
 
 
     function move(
         uint256 _gameId,
         string memory _newFen,
-        uint256 _result,
+        uint8 _result,
         bytes memory _signature
     ) public {
         Game storage game = _getActiveGame(_gameId);
@@ -81,27 +96,32 @@ contract Chess {
         game.fen = _newFen;
         game.lastMoveTimestamp = block.timestamp;
         game.isWhiteTurn = !game.isWhiteTurn;
-        if (_result != Result.InProgress) {proceedResult(game, _result);}
+        emit MoveMade(_gameId, msg.sender, _newFen);
+        if (Result(_result) != Result.InProgress) {
+            proceedResult(game, Result(_result));
+        }
     }
 
 
-
     function proceedResult(Game storage game, Result result) internal {
-        require (game.isActive, "Game is still in progress");
+        require(game.isActive, "Game is still in progress");
         game.isActive = false;
         if (result == Result.WhiteWon) {
-            _safeTransfer(game.playerWhite, game.betAmount);
+            _safeTransfer(payable(game.playerWhite), game.betAmount);
+            emit GameEnded(game.gameId, game.playerWhite, "White won");
         } else if (result == Result.BlackWon) {
-            _safeTransfer(game.playerBlack, game.betAmount);
+            _safeTransfer(payable(game.playerBlack), game.betAmount);
+            emit GameEnded(game.gameId, game.playerBlack, "Black won");
         } else if (result == Result.Draw) {
-            _safeTransfer(game.playerWhite, game.betAmount / 2);
-            _safeTransfer(game.playerBlack, game.betAmount / 2);
+            _safeTransfer(payable(game.playerWhite), game.betAmount / 2);
+            _safeTransfer(payable(game.playerBlack), game.betAmount / 2);
+            emit GameEnded(game.gameId, address(0), "Draw");
         }
     }
 
     function _safeTransfer(address payable _recipient, uint256 _amount) internal {
         require(_recipient != address(0), "Invalid recipient");
-        (bool success, ) = _recipient.call{value: _amount}("");
+        (bool success,) = _recipient.call{value: _amount}("");
         require(success, "Ether transfer failed via call");
     }
 
@@ -109,13 +129,22 @@ contract Chess {
         Game storage game = _getActiveGame(_gameId);
         require(block.timestamp >= game.lastMoveTimestamp + moveTimeout, "Move timeout not reached");
         require(msg.sender == game.playerWhite || msg.sender == game.playerBlack, "Only players can call timeout");
-        game.isActive = false;
-        if (game.isWhiteTurn) {
+        if (game.playerBlack == address(0)) {
+            // Game never started, refund white player
+            _safeTransfer(payable(game.playerWhite), game.betAmount);
+            game.isActive = false;
+            emit GameEnded(game.gameId, game.playerWhite, "Game never started, refunded");
+        }
+        else if (isEqualStr(game.fen, startingFEN)) {
+            // No moves made, refund bets
+            proceedResult(game, Result.Draw);
+        }
+        else if (game.isWhiteTurn) {
             // Black wins
-            payable(game.playerBlack).transfer(game.betAmount);
+            proceedResult(game, Result.BlackWon);
         } else {
             // White wins
-            payable(game.playerWhite).transfer(game.betAmount);
+            proceedResult(game, Result.WhiteWon);
         }
     }
 
@@ -166,8 +195,9 @@ contract Chess {
     }
 
 
-    function verifyMove(uint256 _gameId, string memory _newFen, uint256 _result, bytes memory _signature) public view returns (bool) {
-        bytes32 messageHash = keccak256(abi.encodePacked(_gameId, _newFen, _result));
+    function verifyMove(uint256 _gameId, string memory _newFen, uint8 _result, bytes memory _signature) public view returns (bool) {
+        Game storage game = _getActiveGame(_gameId);
+        bytes32 messageHash = keccak256(abi.encodePacked(_gameId, game.fen, _newFen, _result));
         require(recoverSigner(getEthSignedMessageHash(messageHash), _signature) == oracleAddress, "Invalid signature");
         return true;
     }
