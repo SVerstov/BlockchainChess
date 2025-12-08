@@ -6,10 +6,18 @@ from fastapi import FastAPI
 from pydantic import BaseModel, model_validator
 from dotenv import load_dotenv
 from eth_account import Account, messages
+from starlette.middleware.cors import CORSMiddleware
 from web3 import Web3
 
 load_dotenv()
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # todo only for testing
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class Result(IntEnum):
     in_progress = 0

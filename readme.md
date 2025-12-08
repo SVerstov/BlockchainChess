@@ -32,7 +32,11 @@ Example body:
 
 # Successful response (legal move, game over)
 
-possible results: "1-0", "0-1", "1/2-1/2"
+possible results:
+0 - ongoing game
+1 - 1-0 (white wins)
+2 - 0-1 (black wins)
+3 - ½-½ (draw)
 
 ```json
 {
@@ -46,3 +50,10 @@ possible results: "1-0", "0-1", "1/2-1/2"
 # Validation error response (illegal move)
 
 HTTP Status: 422
+
+# Run front
+
+`npm install vite@5.4.11 --save-dev`
+`cd front`
+`npm install ethers axios chess.js react-chessboard`
+`npm run dev`

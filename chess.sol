@@ -35,7 +35,7 @@ contract Chess {
 
     constructor(address _oracleAddress, uint256 _moveTimeout) {
         oracleAddress = _oracleAddress;
-        moveTimeout = _moveTimeout; // in days
+        moveTimeout = _moveTimeout * 1 days; // in days
 
     }
 
