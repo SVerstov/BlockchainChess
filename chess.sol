@@ -10,13 +10,17 @@ event GameEnded(uint256 indexed gameId, address winner, string reason);
 
 
 
-
 contract Chess {
     address public oracleAddress;
     uint256 public moveTimeout = 1 days;
     string public constant startingFEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
     uint256 public gameCounter = 0;
     mapping(uint256 => Game) public games;
+
+    enum Status{
+        InProgress, WhiteWon, BlackWon, Draw, Cancelled
+    }
+
 
     struct Game {
         uint256 gameId;
@@ -25,13 +29,10 @@ contract Chess {
         string fen;
         uint256 lastMoveTimestamp;
         uint256 betAmount;
-        bool isActive;
         bool isWhiteTurn;
+        Status status;
     }
 
-    enum Result{
-        InProgress, WhiteWon, BlackWon, Draw
-    }
 
     constructor(address _oracleAddress, uint256 _moveTimeout) {
         oracleAddress = _oracleAddress;
@@ -46,7 +47,7 @@ contract Chess {
 
     function _getActiveGame(uint256 _gameId) internal view returns (Game storage) {
         Game storage game = games[_gameId];
-        require(game.isActive, "Game is not active");
+        require(game.status == Status.InProgress, "Game is not active");
         return game;
     }
 
@@ -59,8 +60,8 @@ contract Chess {
             fen: startingFEN,
             lastMoveTimestamp: block.timestamp,
             betAmount: msg.value, // sum of bets from both players
-            isActive: true,
-            isWhiteTurn: true
+            isWhiteTurn: true,
+            status: Status.InProgress
         });
         emit GameCreated(gameCounter, msg.sender, msg.value);
         return gameCounter;
@@ -83,7 +84,7 @@ contract Chess {
     function move(
         uint256 _gameId,
         string memory _newFen,
-        uint8 _result,
+        uint8 _status,
         bytes memory _signature
     ) public {
         Game storage game = _getActiveGame(_gameId);
@@ -92,27 +93,27 @@ contract Chess {
             (!game.isWhiteTurn && msg.sender == game.playerBlack),
             "Not your turn"
         );
-        require(verifyMove(_gameId, _newFen, _result, _signature), "Invalid move signature");
+        require(verifyMove(_gameId, _newFen, _status, _signature), "Invalid move signature");
         game.fen = _newFen;
         game.lastMoveTimestamp = block.timestamp;
         game.isWhiteTurn = !game.isWhiteTurn;
         emit MoveMade(_gameId, msg.sender, _newFen);
-        if (Result(_result) != Result.InProgress) {
-            proceedResult(game, Result(_result));
+        if (Status(_status) != Status.InProgress) {
+            proceedstatus(game, Status(_status));
         }
     }
 
 
-    function proceedResult(Game storage game, Result result) internal {
-        require(game.isActive, "Game is still in progress");
-        game.isActive = false;
-        if (result == Result.WhiteWon) {
+    function proceedstatus(Game storage game, Status status) internal {
+        require(game.status.InProgress, "Game is still in progress");
+        game.status = status;
+        if (status == Status.WhiteWon) {
             _safeTransfer(payable(game.playerWhite), game.betAmount);
             emit GameEnded(game.gameId, game.playerWhite, "White won");
-        } else if (result == Result.BlackWon) {
+        } else if (status == Status.BlackWon) {
             _safeTransfer(payable(game.playerBlack), game.betAmount);
             emit GameEnded(game.gameId, game.playerBlack, "Black won");
-        } else if (result == Result.Draw) {
+        } else if (status == Status.Draw) {
             _safeTransfer(payable(game.playerWhite), game.betAmount / 2);
             _safeTransfer(payable(game.playerBlack), game.betAmount / 2);
             emit GameEnded(game.gameId, address(0), "Draw");
@@ -132,19 +133,19 @@ contract Chess {
         if (game.playerBlack == address(0)) {
             // Game never started, refund white player
             _safeTransfer(payable(game.playerWhite), game.betAmount);
-            game.isActive = false;
+            game.status = Status.Cancelled;
             emit GameEnded(game.gameId, game.playerWhite, "Game never started, refunded");
         }
         else if (isEqualStr(game.fen, startingFEN)) {
             // No moves made, refund bets
-            proceedResult(game, Result.Draw);
+            proceedstatus(game, Status.Draw);
         }
         else if (game.isWhiteTurn) {
             // Black wins
-            proceedResult(game, Result.BlackWon);
+            proceedstatus(game, Status.BlackWon);
         } else {
             // White wins
-            proceedResult(game, Result.WhiteWon);
+            proceedstatus(game, Status.WhiteWon);
         }
     }
 
@@ -195,9 +196,9 @@ contract Chess {
     }
 
 
-    function verifyMove(uint256 _gameId, string memory _newFen, uint8 _result, bytes memory _signature) public view returns (bool) {
+    function verifyMove(uint256 _gameId, string memory _newFen, uint8 _status, bytes memory _signature) public view returns (bool) {
         Game storage game = _getActiveGame(_gameId);
-        bytes32 messageHash = keccak256(abi.encodePacked(_gameId, game.fen, _newFen, _result));
+        bytes32 messageHash = keccak256(abi.encodePacked(_gameId, game.fen, _newFen, _status));
         require(recoverSigner(getEthSignedMessageHash(messageHash), _signature) == oracleAddress, "Invalid signature");
         return true;
     }
