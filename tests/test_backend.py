@@ -1,3 +1,5 @@
+import random
+
 import pytest
 from fastapi.testclient import TestClient
 from backend_validator import app # Импортируем наше приложение
@@ -16,6 +18,7 @@ def test_valid_move_in_progress():
     move = "e2e4"
 
     response = client.post("/validate_move", json={
+        "game_id": random.randint(1, 1000000),
         "fen": chess.STARTING_FEN,
         "uci_move": move
     })
@@ -28,7 +31,7 @@ def test_valid_move_in_progress():
 
     assert data["new_fen"] == expected_board.fen()
     assert data["game_over"] is False
-    assert data["result"] is None
+    assert data["result"] == ""
     assert isinstance(data["signature"], str)
 
 def test_checkmate_move():
@@ -38,10 +41,14 @@ def test_checkmate_move():
     fen_before_mate = "rnbqkbnr/pppp1ppp/8/4p3/6P1/5P2/PPPPP2P/RNBQKBNR b KQkq - 0 2"
     mate_move = "d8h4"
 
-    response = client.post("/validate_move", json={
-        "fen": fen_before_mate,
-        "uci_move": mate_move
-    })
+    response = client.post(
+        "/validate_move",
+        json={
+            "game_id": random.randint(1, 1000000),
+            "fen": fen_before_mate,
+            "uci_move": mate_move,
+        },
+    )
 
     assert response.status_code == 200
     data = response.json()
@@ -54,10 +61,14 @@ def test_illegal_move_logic():
     start_fen = chess.STARTING_FEN
     illegal_move = "g1g4" # Конь так не ходит
 
-    response = client.post("/validate_move", json={
-        "fen": start_fen,
-        "uci_move": illegal_move
-    })
+    response = client.post(
+        "/validate_move",
+        json={
+            "game_id": random.randint(1, 1000000),
+            "fen": start_fen,
+            "uci_move": illegal_move,
+        },
+    )
     assert response.status_code == 422
 
 
