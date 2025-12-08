@@ -4,11 +4,10 @@ import { Chess } from "chess.js";
 import { Chessboard } from "react-chessboard";
 import axios from "axios";
 
-
+// ЗАМЕНИ НА СВОЙ АДРЕС КОНТРАКТА
 const CONTRACT_ADDRESS = "0xd50C54B3E1B4F382c29534ec1b668079ebcC1F64";
-const ORACLE_URL = "http://localhost:8000"; // URL FastAPI
+const ORACLE_URL = "http://localhost:8000";
 
-// ABI (Human readable format for Ethers v5/v6)
 const ABI = [
   "function newGame() public payable returns (uint256)",
   "function joinGame(uint256 _gameId) public payable",
@@ -19,50 +18,123 @@ const ABI = [
   "event GameEnded(uint256 indexed gameId, address winner, string reason)"
 ];
 
+// Вспомогательная функция для приведения адреса к нижнему регистру
+const normalizeAddr = (addr) => (addr ? addr.toLowerCase() : "");
+
 function App() {
   const [game, setGame] = useState(new Chess());
+  const [chessPosition, setChessPosition] = useState(() => new Chess().fen());
   const [provider, setProvider] = useState(null);
   const [signer, setSigner] = useState(null);
   const [contract, setContract] = useState(null);
   const [account, setAccount] = useState("");
 
+  // Ориентация доски ('white' или 'black')
+  const [boardOrientation, setBoardOrientation] = useState("white");
+
   // Состояние игры
   const [gameId, setGameId] = useState("");
   const [betAmount, setBetAmount] = useState("0.001");
-  const [gameState, setGameState] = useState(null); // Данные из блокчейна
+  const [gameState, setGameState] = useState(null);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState("");
+  const [uciInput, setUciInput] = useState("");
 
   // 1. Подключение кошелька
   const connectWallet = async () => {
     if (window.ethereum) {
-      const _provider = new ethers.BrowserProvider(window.ethereum);
-      const _signer = await _provider.getSigner();
-      const _contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, _signer);
+      try {
+        const _provider = new ethers.BrowserProvider(window.ethereum);
+        const _signer = await _provider.getSigner();
+        const _contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, _signer);
 
-      setProvider(_provider);
-      setSigner(_signer);
-      setContract(_contract);
-      // Нормализуем адрес для корректного сравнения
-      const addr = await _signer.getAddress();
-      setAccount(addr.toLowerCase());
-      console.log("Wallet connected:", addr);
+        setProvider(_provider);
+        setSigner(_signer);
+        setContract(_contract);
+
+        const addr = await _signer.getAddress();
+        const normAddr = normalizeAddr(addr);
+        setAccount(normAddr);
+        console.log("Wallet connected:", normAddr);
+      } catch (err) {
+        console.error("User rejected connection", err);
+      }
     } else {
       alert("Install Metamask!");
     }
   };
 
-  // Автозагрузка gameId из URL при монтировании
+  // Проверка, подключен ли кошелек уже (при перезагрузке)
+  useEffect(() => {
+    const checkConnection = async () => {
+        if (window.ethereum) {
+            const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+            if (accounts.length > 0) {
+                connectWallet();
+            }
+        }
+    };
+    checkConnection();
+  }, []);
+
+  // Автозагрузка gameId из URL
   useEffect(() => {
     const url = new URL(window.location);
     const fromUrl = url.searchParams.get("gameId");
     if (fromUrl) {
       setGameId(fromUrl);
-      console.log("Loaded gameId from URL:", fromUrl);
     }
   }, []);
 
-  // 2. Создание игры
+  // 2. Логика обновления состояния и ПОВОРОТА ДОСКИ
+  const fetchGameState = useCallback(async () => {
+    if (!contract || !gameId) return;
+    try {
+      const g = await contract.games(gameId);
+
+      const safeFen = g.fen || "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+      const pWhite = normalizeAddr(g.playerWhite);
+      const pBlack = normalizeAddr(g.playerBlack);
+
+      // Синхронизация движка и доски
+      if (game.fen() !== safeFen) {
+        const newGame = new Chess(safeFen);
+        setGame(newGame);
+        setChessPosition(safeFen);
+      }
+
+      setGameState({
+        playerWhite: pWhite,
+        playerBlack: pBlack,
+        isActive: g.isActive,
+        isWhiteTurn: g.isWhiteTurn,
+        lastMoveTime: Number(g.lastMoveTimestamp)
+      });
+
+      // --- ЛОГИКА ПОВОРОТА ДОСКИ ---
+      // Если я подключен и я - черный игрок, поворачиваем доску
+      if (account && pBlack && account === pBlack) {
+         setBoardOrientation("black");
+      } else {
+         setBoardOrientation("white");
+      }
+
+    } catch (e) {
+      console.error("Error fetching game:", e);
+    }
+  }, [contract, gameId, game, account]); // Убрал лишние зависимости
+
+  // Полллинг
+  useEffect(() => {
+    const interval = setInterval(() => {
+        if (gameId && contract) fetchGameState();
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [gameId, contract, fetchGameState]);
+
+
+  // --- GAME ACTIONS ---
+
   const createGame = async () => {
     if (!contract) return;
     try {
@@ -70,8 +142,7 @@ function App() {
       const tx = await contract.newGame({ value: ethers.parseEther(betAmount) });
       setStatus("Creating game... Waiting for tx");
       await tx.wait();
-      setStatus("Game created! Check logs for ID (or wait for UI update)");
-      // В реальности лучше слушать событие GameCreated, но пока просто скажем пользователю
+      setStatus("Game created! Check logs or refresh.");
     } catch (e) {
       console.error(e);
       alert("Error creating game");
@@ -80,7 +151,6 @@ function App() {
     }
   };
 
-  // 3. Присоединение к игре
   const joinGame = async () => {
     if (!contract || !gameId) return;
     try {
@@ -91,7 +161,6 @@ function App() {
       await tx.wait();
       setStatus("Joined!");
 
-      // Сохраняем ID в адресную строку браузера без перезагрузки
       const url = new URL(window.location);
       url.searchParams.set("gameId", gameId);
       window.history.pushState({}, "", url);
@@ -105,121 +174,85 @@ function App() {
     }
   };
 
-  // 4. Получение состояния игры из блокчейна
-  const fetchGameState = useCallback(async () => {
-    if (!contract || !gameId) return;
-    try {
-      const g = await contract.games(gameId);
-      // Структура g: [id, white, black, fen, time, bet, active, turn]
+  const executeOracleMove = async (uciMove, currentFen) => {
+      try {
+        setLoading(true);
+        setStatus("Validating with Oracle...");
 
-      const currentFen = g.fen;
-      const isWhiteTurn = g.isWhiteTurn;
+        const response = await axios.post(`${ORACLE_URL}/validate_move`, {
+            game_id: Number(gameId),
+            fen: currentFen,
+            uci_move: uciMove
+        });
+        const { new_fen, result, signature } = response.data;
 
-      // Синхронизируем локальную шахматную логику с блокчейном
-      const safeFen = currentFen || "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-      if (game.fen() !== safeFen) {
-        const newGame = new Chess(safeFen);
-        setGame(newGame);
+        setStatus("Oracle signed. Sending to Blockchain...");
+        const tx = await contract.move(gameId, new_fen, result, signature);
+        await tx.wait();
+        setStatus("Move confirmed on-chain!");
+
+        // Обновляем локально сразу для плавности
+        const updated = new Chess(new_fen);
+        setGame(updated);
+        setChessPosition(new_fen);
+
+        // Дергаем блокчейн через секунду, чтобы убедиться
+        setTimeout(fetchGameState, 1000);
+        return true;
+      } catch (e) {
+        console.error("Move failed:", e);
+        alert("Move failed: " + (e.response?.data?.detail || e.message));
+        return false;
+      } finally {
+        setLoading(false);
       }
+  }
 
-      setGameState({
-        playerWhite: g.playerWhite?.toLowerCase?.() ? g.playerWhite.toLowerCase() : g.playerWhite,
-        playerBlack: g.playerBlack?.toLowerCase?.() ? g.playerBlack.toLowerCase() : g.playerBlack,
-        isActive: g.isActive,
-        isWhiteTurn: isWhiteTurn,
-        lastMoveTime: Number(g.lastMoveTimestamp)
-      });
-//       console.log("Game state updated:", {
-//         playerWhite: g.playerWhite,
-//         playerBlack: g.playerBlack,
-//         isActive: g.isActive,
-//         isWhiteTurn,
-//         fen: safeFen,
-//       });
-    } catch (e) {
-      console.error("Error fetching game:", e);
-    }
-  }, [contract, gameId, game]);
+  const onDrop = async (sourceSquare, targetSquare) => {
+    if (!gameState || !gameState.isActive) return false;
 
-  // Полллинг (обновление) состояния каждые 5 секунд
-  useEffect(() => {
-    const interval = setInterval(() => {
-        if (gameId) fetchGameState();
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [gameId, fetchGameState]);
-
-
-  // 5. Логика хода (The Core Logic)
-  const onDrop = async (sourceSquare, targetSquare, piece) => {
-    console.log("onDrop invoked:", { sourceSquare, targetSquare, piece });
-    if (!gameState || !gameState.isActive) {
-      console.warn("Drop ignored: game not active or no state yet");
-      return false;
-    }
-
-    // Проверка очередности хода (локально, для UI)
+    // Проверка очереди хода
     const isMyTurn = (gameState.isWhiteTurn && account === gameState.playerWhite) ||
                      (!gameState.isWhiteTurn && account === gameState.playerBlack);
 
     if (!isMyTurn) {
-      alert("Not your turn!");
-      return false;
+        // Не блокируем UI жестко (return false), чтобы фигура просто вернулась назад,
+        // но можно вывести алерт для ясности
+        console.log("Not your turn");
+        return false;
     }
 
-    // Попытка сделать ход локально (chess.js)
-    // Важно: создаем копию инстанса, чтобы проверить валидность
-    const gameCopy = new Chess(game.fen());
+    const gameCopy = new Chess(chessPosition);
     let move = null;
     try {
-        move = gameCopy.move({
-            from: sourceSquare,
-            to: targetSquare,
-            promotion: "q", // всегда превращаем в ферзя для простоты
-        });
-    } catch (e) {
-        console.warn("Illegal move attempted", e);
-        return false; // Невалидный ход
-    }
+      move = gameCopy.move({ from: sourceSquare, to: targetSquare, promotion: "q" });
+    } catch (e) { return false; }
 
     if (!move) return false;
 
-    // Если ход валиден локально, отправляем Оракулу
+    const uciMove = move.from + move.to + (move.promotion || "");
+    return await executeOracleMove(uciMove, chessPosition);
+  };
+
+  const submitUciMove = async () => {
+    const uci = uciInput.trim().toLowerCase();
+    if (!uci || !gameState || !gameState.isActive) return;
+
+    // Валидация хода движком
+    const gameCopy = new Chess(game.fen());
     try {
-        setLoading(true);
-        setStatus("Validating with Oracle...");
-
-        // Формируем UCI ход (например, "e2e4")
-        const uciMove = move.from + move.to + (move.promotion || "");
-
-        // A. Запрос к Python Oracle
-        const response = await axios.post(`${ORACLE_URL}/validate_move`, {
-            game_id: Number(gameId),
-            fen: game.fen(), // Текущий FEN (до хода)
-            uci_move: uciMove
-        });
-
-        const { new_fen, result, signature } = response.data;
-
-        // B. Отправка транзакции в Solidity
-        setStatus("Oracle signed. Sending to Blockchain...");
-        const tx = await contract.move(gameId, new_fen, result, signature);
-
-        await tx.wait();
-        setStatus("Move confirmed on-chain!");
-
-        // Обновляем доску сразу
-        setGame(new Chess(new_fen));
-        fetchGameState(); // Получаем свежие данные
-        return true;
-
-    } catch (e) {
-        console.error("Move failed:", e);
-        alert("Move failed: " + (e.response?.data?.detail || e.message));
-        return false;
-    } finally {
-        setLoading(false);
+        const from = uci.slice(0,2);
+        const to = uci.slice(2,4);
+        const promo = uci.length === 5 ? uci.slice(4,5) : undefined;
+        const move = gameCopy.move({ from, to, promotion: promo || 'q' });
+        if(!move) throw new Error();
+    } catch(e) {
+        alert("Illegal move");
+        return;
     }
+
+    const success = await executeOracleMove(uci, game.fen());
+    if (success) setUciInput("");
   };
 
   const claimTimeout = async () => {
@@ -237,6 +270,13 @@ function App() {
           setLoading(false);
       }
   }
+
+  // Вычисляем, можно ли сейчас двигать фигуры
+  const canMovePieces = !loading &&
+                        gameState &&
+                        gameState.isActive &&
+                        ((gameState.isWhiteTurn && account === gameState.playerWhite) ||
+                         (!gameState.isWhiteTurn && account === gameState.playerBlack));
 
   return (
     <div style={{ padding: 20, maxWidth: 600, margin: "0 auto", fontFamily: "sans-serif" }}>
@@ -256,46 +296,57 @@ function App() {
             placeholder="Bet Amount (ETH)"
             value={betAmount}
             onChange={(e) => setBetAmount(e.target.value)}
+            style={{ width: "100px", marginRight: "10px" }}
         />
-        <button onClick={createGame} disabled={loading} style={{marginLeft: 10}}>
-            Create New Game
-        </button>
+        <button onClick={createGame} disabled={loading}>Create New Game</button>
         <br /><br />
         <input
             placeholder="Game ID"
             value={gameId}
             onChange={(e) => setGameId(e.target.value)}
+            style={{ width: "100px", marginRight: "10px" }}
         />
-        <button onClick={joinGame} disabled={loading} style={{marginLeft: 10}}>
-            Join Game
-        </button>
-        <button onClick={fetchGameState} style={{marginLeft: 10}}>
-            Refresh
-        </button>
+        <button onClick={joinGame} disabled={loading} style={{ marginRight: "10px" }}>Join Game</button>
+        <button onClick={fetchGameState}>Refresh</button>
       </div>
 
-      {status && <div style={{background: "#f0f0f0", padding: 10, marginBottom: 10}}>{status}</div>}
+      {status && <div style={{background: "#333", color: "#fff", padding: 10, marginBottom: 10, borderRadius: 4}}>{status}</div>}
 
-      <div style={{ height: 400, width: 400 }}>
+      <div style={{ height: 400, width: 400, margin: "0 auto" }}>
         <Chessboard
-            position={game.fen()}
+            id="BasicBoard"
+            position={chessPosition}
             onPieceDrop={onDrop}
-            onPieceDragBegin={(piece, square) => {
-              console.log("drag begin", { piece, square });
-            }}
             boardWidth={400}
-            // Разрешаем перетаскивание до получения состояния, чтобы увидеть, что onDrop вызывается
-            arePiecesDraggable={!loading && (gameState ? gameState.isActive : true)}
+            // ИСПРАВЛЕНИЕ: проп называется boardOrientation, а не orientation
+            boardOrientation={boardOrientation}
+            arePiecesDraggable={canMovePieces}
         />
+      </div>
+
+      <div style={{ marginTop: 12, textAlign: "center" }}>
+        <input
+            value={uciInput}
+            onChange={(e) => setUciInput(e.target.value)}
+            placeholder="UCI (e.g. e2e4)"
+            style={{ marginRight: 8, padding: 5 }}
+        />
+        <button onClick={submitUciMove} disabled={!canMovePieces}>
+          Make Move
+        </button>
       </div>
 
       {gameState && (
-        <div style={{ marginTop: 20 }}>
-            <p><strong>Status:</strong> {gameState.isActive ? "Active" : "Finished"}</p>
+        <div style={{ marginTop: 20, padding: 10, border: "1px solid #ccc", borderRadius: 8 }}>
+            <p><strong>Status:</strong> {gameState.isActive ? "🟢 Active" : "🔴 Finished"}</p>
             <p><strong>Turn:</strong> {gameState.isWhiteTurn ? "White" : "Black"}</p>
-            <p><strong>White:</strong> {gameState.playerWhite}</p>
-            <p><strong>Black:</strong> {gameState.playerBlack}</p>
-            <button onClick={claimTimeout} disabled={!gameState.isActive}>Call Timeout</button>
+            <div style={{ fontSize: "0.9em", color: "#666" }}>
+                <p>White: {gameState.playerWhite}</p>
+                <p>Black: {gameState.playerBlack}</p>
+            </div>
+            <button onClick={claimTimeout} disabled={!gameState.isActive} style={{marginTop: 10, cursor: "pointer"}}>
+                Call Timeout
+            </button>
         </div>
       )}
     </div>
