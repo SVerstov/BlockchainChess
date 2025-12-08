@@ -2,7 +2,7 @@ import random
 
 import pytest
 from fastapi.testclient import TestClient
-from backend_validator import app # Импортируем наше приложение
+from oracle import app # Импортируем наше приложение
 import chess
 import os
 client = TestClient(app)
