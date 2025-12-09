@@ -14,3 +14,31 @@ The React Compiler is not enabled on this template because of its impact on dev 
 ## Expanding the ESLint configuration
 
 If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+
+# Frontend Setup
+
+## Config
+
+The app reads settings from Vite environment variables.
+
+1. Copy `.env.example` to `.env`:
+
+```
+cp .env.example .env
+```
+
+2. Edit `.env` and set:
+
+- `VITE_CONTRACT_ADDRESS`: deployed Chess contract address
+- `VITE_ORACLE_URL`: Oracle HTTP endpoint (e.g., `http://localhost:8000`)
+
+## Run
+
+Install deps and start dev server:
+
+```
+npm install
+npm run dev
+```
+
+If env vars are missing, the app will warn in console. Ensure the Oracle server is running before making moves.

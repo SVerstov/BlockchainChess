@@ -4,8 +4,16 @@ import {Chess} from "chess.js";
 import {Chessboard} from "react-chessboard";
 import axios from "axios";
 
-const CONTRACT_ADDRESS = "0xd50C54B3E1B4F382c29534ec1b668079ebcC1F64";
-const ORACLE_URL = "http://localhost:8000";
+// Load settings from environment (.env) via Vite
+const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS;
+const ORACLE_URL = import.meta.env.VITE_ORACLE_URL;
+
+if (!CONTRACT_ADDRESS) {
+  console.warn("VITE_CONTRACT_ADDRESS is not set. Please define it in your .env file.");
+}
+if (!ORACLE_URL) {
+  console.warn("VITE_ORACLE_URL is not set. Please define it in your .env file.");
+}
 
 const ABI = [
     "function newGame() public payable returns (uint256)",
@@ -367,4 +375,3 @@ function App() {
 }
 
 export default App;
-
