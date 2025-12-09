@@ -18,7 +18,7 @@ contract Chess {
     mapping(uint256 => Game) public games;
 
     enum Status{
-        InProgress, WhiteWon, BlackWon, Draw, Cancelled
+        InProgress, WhiteWon, BlackWon, Draw, Cancelled, WaitingForOpponent
     }
 
 
@@ -30,6 +30,7 @@ contract Chess {
         uint256 lastMoveTimestamp;
         uint256 betAmount;
         bool isWhiteTurn;
+        bool isDrawOffered;
         Status status;
     }
 
@@ -47,7 +48,13 @@ contract Chess {
 
     function _getActiveGame(uint256 _gameId) internal view returns (Game storage) {
         Game storage game = games[_gameId];
-        require(game.status == Status.InProgress, "Game is not active");
+        require(game.status == Status.InProgress, "Game is not in progress");
+        return game;
+    }
+
+    function _getNotFinishedGame(uint256 _gameId) internal view returns (Game storage) {
+        Game storage game = games[_gameId];
+        require(game.status == Status.InProgress || game.status == Status.WaitingForOpponent, "Game is finished");
         return game;
     }
 
@@ -61,14 +68,15 @@ contract Chess {
             lastMoveTimestamp: block.timestamp,
             betAmount: msg.value, // sum of bets from both players
             isWhiteTurn: true,
-            status: Status.InProgress
+            isDrawOffered: false,
+            status: Status.WaitingForOpponent
         });
         emit GameCreated(gameCounter, msg.sender, msg.value);
         return gameCounter;
     }
 
     function joinGame(uint256 _gameId) public payable {
-        Game storage game = _getActiveGame(_gameId);
+        Game storage game = games[_gameId];
         require(game.playerBlack == address(0), "Game already has two players");
         require(game.playerWhite != msg.sender, "Cannot join your own game");
         if (msg.value != game.betAmount) {
@@ -77,6 +85,7 @@ contract Chess {
         game.playerBlack = msg.sender;
         game.betAmount += msg.value;
         game.lastMoveTimestamp = block.timestamp; // reset timer on game start
+        game.status = Status.InProgress;
         emit GameStarted(_gameId, game.playerWhite, msg.sender);
     }
 
@@ -88,24 +97,21 @@ contract Chess {
         bytes memory _signature
     ) public {
         Game storage game = _getActiveGame(_gameId);
-        require(
-            (game.isWhiteTurn && msg.sender == game.playerWhite) ||
-            (!game.isWhiteTurn && msg.sender == game.playerBlack),
-            "Not your turn"
-        );
+        _checkMoveOrder(game);
         require(verifyMove(_gameId, _newFen, _status, _signature), "Invalid move signature");
         game.fen = _newFen;
         game.lastMoveTimestamp = block.timestamp;
         game.isWhiteTurn = !game.isWhiteTurn;
+        game.isDrawOffered = false;
         emit MoveMade(_gameId, msg.sender, _newFen);
         if (Status(_status) != Status.InProgress) {
-            proceedstatus(game, Status(_status));
+            _proceedStatus(game, Status(_status));
         }
     }
 
 
-    function proceedstatus(Game storage game, Status status) internal {
-        require(game.status == Status.InProgress, "Game is still in progress");
+    function _proceedStatus(Game storage game, Status status) internal {
+        require(game.status == Status.InProgress || game.status == Status.WaitingForOpponent, "Game is still in progress");
         game.status = status;
         if (status == Status.WhiteWon) {
             _safeTransfer(payable(game.playerWhite), game.betAmount);
@@ -117,6 +123,10 @@ contract Chess {
             _safeTransfer(payable(game.playerWhite), game.betAmount / 2);
             _safeTransfer(payable(game.playerBlack), game.betAmount / 2);
             emit GameEnded(game.gameId, address(0), "Draw");
+        } else if (status == Status.Cancelled) {
+            // Should not reach here normally
+            require(game.playerBlack == address(0), "Cannot cancel active game");
+            _safeTransfer(payable(game.playerWhite), game.betAmount);
         }
     }
 
@@ -126,8 +136,24 @@ contract Chess {
         require(success, "Ether transfer failed via call");
     }
 
+    function _checkMoveOrder(Game storage game) internal view {
+        if (game.isWhiteTurn)
+            require(msg.sender == game.playerWhite, "Not your turn!");
+        else {
+            require(msg.sender == game.playerBlack, "Not your turn!");
+        }
+    }
+
+    function _checkNotYourMoveOrder(Game storage game) internal view {
+        if (!game.isWhiteTurn)
+            require(msg.sender == game.playerWhite, "Your turn!");
+        else {
+            require(msg.sender == game.playerBlack, "Your turn!");
+        }
+    }
+
     function callTimeout(uint256 _gameId) public {
-        Game storage game = _getActiveGame(_gameId);
+        Game storage game = _getNotFinishedGame(_gameId);
         require(block.timestamp >= game.lastMoveTimestamp + moveTimeout, "Move timeout not reached");
         require(msg.sender == game.playerWhite || msg.sender == game.playerBlack, "Only players can call timeout");
         if (game.playerBlack == address(0)) {
@@ -138,14 +164,14 @@ contract Chess {
         }
         else if (isEqualStr(game.fen, startingFEN)) {
             // No moves made, refund bets
-            proceedstatus(game, Status.Draw);
+            _proceedStatus(game, Status.Draw);
         }
         else if (game.isWhiteTurn) {
             // Black wins
-            proceedstatus(game, Status.BlackWon);
+            _proceedStatus(game, Status.BlackWon);
         } else {
             // White wins
-            proceedstatus(game, Status.WhiteWon);
+            _proceedStatus(game, Status.WhiteWon);
         }
     }
 
@@ -203,5 +229,35 @@ contract Chess {
         return true;
     }
 
+    function resign(uint256 _gameId) public {
+        Game storage game = _getActiveGame(_gameId);
+        require(game.playerBlack != address(0), "Game doesn't started");
+        if (msg.sender == game.playerWhite) {
+            _proceedStatus(game, Status.BlackWon);
+        } else if (msg.sender == game.playerBlack) {
+            _proceedStatus(game, Status.WhiteWon);
+        } else {
+            revert("You are not a player of this game");
+        }
+    }
 
+    function cancelGame(uint256 _gameId) public {
+        Game storage game = games[_gameId];
+        require(game.status == Status.WaitingForOpponent, "Game already started");
+        require(msg.sender == game.playerWhite, "Only white player can cancel the game");
+        _proceedStatus(game, Status.Cancelled);
+    }
+
+    function offerDraw(uint256 _gameId) public {
+        Game storage game = _getActiveGame(_gameId);
+        _checkNotYourMoveOrder(game);
+        game.isDrawOffered = true;
+    }
+
+    function acceptDraw(uint256 _gameId) public {
+        Game storage game = _getActiveGame(_gameId);
+        require(game.isDrawOffered, "No draw offer to accept");
+        _checkMoveOrder(game);
+        _proceedStatus(game, Status.Draw);
+    }
 }
