@@ -36,7 +36,7 @@ contract Chess {
 
     constructor(address _oracleAddress, uint256 _moveTimeout) {
         oracleAddress = _oracleAddress;
-        moveTimeout = _moveTimeout * 1 days; // in days
+        moveTimeout = _moveTimeout * 1 days;
 
     }
 
@@ -105,7 +105,7 @@ contract Chess {
 
 
     function proceedstatus(Game storage game, Status status) internal {
-        require(game.status.InProgress, "Game is still in progress");
+        require(game.status == Status.InProgress, "Game is still in progress");
         game.status = status;
         if (status == Status.WhiteWon) {
             _safeTransfer(payable(game.playerWhite), game.betAmount);

@@ -6,7 +6,7 @@ from chess import Board, Move
 from fastapi import FastAPI
 from pydantic import BaseModel, model_validator
 from dotenv import load_dotenv
-from eth_account import Account, messages
+from eth_account import messages
 from starlette.middleware.cors import CORSMiddleware
 from web3 import Web3, Account
 
