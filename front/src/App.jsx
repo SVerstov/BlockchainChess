@@ -4,7 +4,6 @@ import { Chess } from "chess.js";
 import { Chessboard } from "react-chessboard";
 import axios from "axios";
 
-// ЗАМЕНИ НА СВОЙ АДРЕС КОНТРАКТА
 const CONTRACT_ADDRESS = "0xd50C54B3E1B4F382c29534ec1b668079ebcC1F64";
 const ORACLE_URL = "http://localhost:8000";
 
@@ -18,7 +17,6 @@ const ABI = [
   "event GameEnded(uint256 indexed gameId, address winner, string reason)"
 ];
 
-// Вспомогательная функция для приведения адреса к нижнему регистру
 const normalizeAddr = (addr) => (addr ? addr.toLowerCase() : "");
 
 function App() {
@@ -29,10 +27,9 @@ function App() {
   const [contract, setContract] = useState(null);
   const [account, setAccount] = useState("");
 
-  // Ориентация доски ('white' или 'black')
   const [boardOrientation, setBoardOrientation] = useState("white");
 
-  // Состояние игры
+  // Game state
   const [gameId, setGameId] = useState("");
   const [betAmount, setBetAmount] = useState("0.001");
   const [gameState, setGameState] = useState(null);
@@ -40,7 +37,6 @@ function App() {
   const [status, setStatus] = useState("");
   const [uciInput, setUciInput] = useState("");
 
-  // 1. Подключение кошелька
   const connectWallet = async () => {
     if (window.ethereum) {
       try {
@@ -64,7 +60,6 @@ function App() {
     }
   };
 
-  // Проверка, подключен ли кошелек уже (при перезагрузке)
   useEffect(() => {
     const checkConnection = async () => {
         if (window.ethereum) {
@@ -77,7 +72,7 @@ function App() {
     checkConnection();
   }, []);
 
-  // Автозагрузка gameId из URL
+  // autoload gameId from url
   useEffect(() => {
     const url = new URL(window.location);
     const fromUrl = url.searchParams.get("gameId");
@@ -86,7 +81,7 @@ function App() {
     }
   }, []);
 
-  // 2. Логика обновления состояния и ПОВОРОТА ДОСКИ
+  // sync logic and chess board orientation
   const fetchGameState = useCallback(async () => {
     if (!contract || !gameId) return;
     try {
@@ -96,7 +91,7 @@ function App() {
       const pWhite = normalizeAddr(g.playerWhite);
       const pBlack = normalizeAddr(g.playerBlack);
 
-      // Синхронизация движка и доски
+      // sync chess board
       if (game.fen() !== safeFen) {
         const newGame = new Chess(safeFen);
         setGame(newGame);
@@ -111,8 +106,7 @@ function App() {
         lastMoveTime: Number(g.lastMoveTimestamp)
       });
 
-      // --- ЛОГИКА ПОВОРОТА ДОСКИ ---
-      // Если я подключен и я - черный игрок, поворачиваем доску
+      // board orientation
       if (account && pBlack && account === pBlack) {
          setBoardOrientation("black");
       } else {
@@ -124,7 +118,7 @@ function App() {
     }
   }, [contract, gameId, game, account]); // Убрал лишние зависимости
 
-  // Полллинг
+  // updating
   useEffect(() => {
     const interval = setInterval(() => {
         if (gameId && contract) fetchGameState();
@@ -133,7 +127,7 @@ function App() {
   }, [gameId, contract, fetchGameState]);
 
 
-  // --- GAME ACTIONS ---
+  //  GAME ACTIONS
 
   const createGame = async () => {
     if (!contract) return;
@@ -191,12 +185,11 @@ function App() {
         await tx.wait();
         setStatus("Move confirmed on-chain!");
 
-        // Обновляем локально сразу для плавности
         const updated = new Chess(new_fen);
         setGame(updated);
         setChessPosition(new_fen);
 
-        // Дергаем блокчейн через секунду, чтобы убедиться
+        
         setTimeout(fetchGameState, 1000);
         return true;
       } catch (e) {
@@ -211,13 +204,11 @@ function App() {
   const onDrop = async (sourceSquare, targetSquare) => {
     if (!gameState || !gameState.isActive) return false;
 
-    // Проверка очереди хода
+    // check moove order
     const isMyTurn = (gameState.isWhiteTurn && account === gameState.playerWhite) ||
                      (!gameState.isWhiteTurn && account === gameState.playerBlack);
 
     if (!isMyTurn) {
-        // Не блокируем UI жестко (return false), чтобы фигура просто вернулась назад,
-        // но можно вывести алерт для ясности
         console.log("Not your turn");
         return false;
     }
@@ -271,7 +262,6 @@ function App() {
       }
   }
 
-  // Вычисляем, можно ли сейчас двигать фигуры
   const canMovePieces = !loading &&
                         gameState &&
                         gameState.isActive &&
@@ -318,7 +308,6 @@ function App() {
             position={chessPosition}
             onPieceDrop={onDrop}
             boardWidth={400}
-            // ИСПРАВЛЕНИЕ: проп называется boardOrientation, а не orientation
             boardOrientation={boardOrientation}
             arePiecesDraggable={canMovePieces}
         />
