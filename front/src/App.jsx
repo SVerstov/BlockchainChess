@@ -475,7 +475,7 @@ function App() {
                 <p><strong>Status:</strong> {statusText(gameState.status)}</p>
                 <p><strong>Turn:</strong> {gameState.isWhiteTurn ? "White" : "Black"}</p>
                 {moveTimeoutSec != null && (
-                  <p><strong>Time to turn:</strong> {formatDuration(remainingSeconds)}</p>
+                  <p hidden={(!gameState.isActive)}><strong>Time to turn:</strong> {formatDuration(remainingSeconds)}</p>
                 )}
                 <div style={{ fontSize: "0.9em", color: "#666" }}>
                     <p>White: {gameState.playerWhite}</p>
