@@ -482,7 +482,13 @@ function App() {
                     <p>Black: {gameState.playerBlack}</p>
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
-                  <button onClick={claimTimeout} disabled={!gameState.isActive} style={{cursor: "pointer"}}>Call Timeout</button>
+                  <button
+                    onClick={claimTimeout}
+                    disabled={(!gameState.isActive) || (remainingSeconds != null && remainingSeconds > 0)}
+                    style={{cursor: "pointer"}}
+                  >
+                    Claim Timeout
+                  </button>
                   <button onClick={resign} disabled={!canResign} style={{cursor: "pointer"}}>Resign</button>
                   <button onClick={cancel} disabled={!canCancel} style={{cursor: "pointer"}}>Cancel Game</button>
                   <button onClick={offerDraw} disabled={!canOfferDraw} style={{cursor: "pointer"}}>Offer Draw</button>
