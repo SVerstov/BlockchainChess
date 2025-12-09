@@ -1,4 +1,5 @@
 import os
+from contextlib import asynccontextmanager
 from enum import IntEnum
 
 from chess import Board, Move
@@ -7,10 +8,19 @@ from pydantic import BaseModel, model_validator
 from dotenv import load_dotenv
 from eth_account import Account, messages
 from starlette.middleware.cors import CORSMiddleware
-from web3 import Web3
+from web3 import Web3, Account
 
 load_dotenv()
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    address = Account.from_key(os.getenv("PRIVATE_KEY")).address
+    print(f"Eth address for your PK:\n{address}")
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], # todo only for testing
