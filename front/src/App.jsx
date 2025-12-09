@@ -441,7 +441,7 @@ function App() {
                   style={{width: "100px", marginRight: "10px"}}
               />
               <button onClick={joinGame} disabled={loading} style={{marginRight: "10px"}}>Join Game</button>
-              <button onClick={fetchGameState}>Refresh</button>
+              <button onClick={fetchGameState}>Load Gane</button>
           </div>
 
           {status && <div
@@ -471,30 +471,45 @@ function App() {
           </div>
 
           {gameState && (
-            <div style={{ marginTop: 20, padding: 10, border: "1px solid #ccc", borderRadius: 8 }}>
-                <p><strong>Status:</strong> {statusText(gameState.status)}</p>
-                <p><strong>Turn:</strong> {gameState.isWhiteTurn ? "White" : "Black"}</p>
-                {moveTimeoutSec != null && (
-                  <p hidden={(!gameState.isActive)}><strong>Time to turn:</strong> {formatDuration(remainingSeconds)}</p>
-                )}
+            <div style={{
+              marginTop: 20,
+              padding: 10,
+              border: "1px solid #ccc",
+              borderRadius: 8,
+              width: "100%",
+              maxWidth: 500,
+              alignSelf: "flex-start",
+              textAlign: "left"
+            }}>
+                 <p><strong>Status:</strong> {statusText(gameState.status)}</p>
+                 <p><strong>Turn:</strong> {gameState.isWhiteTurn ? "White" : "Black"}</p>
+                 {moveTimeoutSec != null && (
+                   <p><strong>Time to turn:</strong> {formatDuration(remainingSeconds)}</p>
+                 )}
                 <div style={{ fontSize: "0.9em", color: "#666" }}>
-                    <p>White: {gameState.playerWhite}</p>
-                    <p>Black: {gameState.playerBlack}</p>
-                </div>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
-                  <button
-                    onClick={claimTimeout}
-                    disabled={(!gameState.isActive) || (remainingSeconds != null && remainingSeconds > 0)}
-                    style={{cursor: "pointer"}}
-                  >
-                    Claim Timeout
-                  </button>
-                  <button onClick={resign} disabled={!canResign} style={{cursor: "pointer"}}>Resign</button>
-                  <button onClick={cancel} disabled={!canCancel} style={{cursor: "pointer"}}>Cancel Game</button>
-                  <button onClick={offerDraw} disabled={!canOfferDraw} style={{cursor: "pointer"}}>Offer Draw</button>
-                  <button onClick={acceptDraw} disabled={!canAcceptDraw} style={{cursor: "pointer"}}>Accept Draw</button>
-                </div>
-            </div>
+                     <p>White: {gameState.playerWhite}</p>
+                     <p>Black: {gameState.playerBlack}</p>
+                 </div>
+                <div style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 8,
+                  marginTop: 10,
+                  alignItems: "stretch"
+                }}>
+                   <button
+                     onClick={claimTimeout}
+                     disabled={(!gameState.isActive) || (remainingSeconds != null && remainingSeconds > 0)}
+                     style={{cursor: "pointer"}}
+                   >
+                     Claim Timeout
+                   </button>
+                   <button onClick={resign} disabled={!canResign} style={{cursor: "pointer"}}>Resign</button>
+                   <button onClick={cancel} disabled={!canCancel} style={{cursor: "pointer"}}>Cancel Game</button>
+                   <button onClick={offerDraw} disabled={!canOfferDraw} style={{cursor: "pointer"}}>Offer Draw</button>
+                   <button onClick={acceptDraw} disabled={!canAcceptDraw} style={{cursor: "pointer"}}>Accept Draw</button>
+                 </div>
+             </div>
           )}
       </div>
   );

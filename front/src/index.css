@@ -66,3 +66,11 @@ button:focus-visible {
     background-color: #f9f9f9;
   }
 }
+
+body {
+  display: flex; /* Makes the body a flex container */
+  justify-content: center; /* Centers content horizontally */
+  align-items: center; /* Centers content vertically */
+  min-height: 100vh; /* Ensures the body takes full viewport height */
+  margin: 0; /* Removes default body margin */
+}
