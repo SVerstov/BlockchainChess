@@ -414,104 +414,111 @@ function App() {
   const canAcceptDraw = isInProgress && gameState?.isDrawOffered && isMyTurn;
 
   return (
-      <div style={{padding: 20, maxWidth: 900, margin: "0 auto", fontFamily: "sans-serif"}}>
-          <h1>On-Chain Chess ♟️</h1>
+    <div style={{
+      padding: 20,
+      maxWidth: 1300,
+      margin: "0 auto",
+      fontFamily: "sans-serif"
+    }}>
+      <h1 style={{ textAlign: "center" }}>On-Chain Chess ♟️</h1>
 
-          {!account ? (
-              <button onClick={connectWallet} style={{padding: 10, fontSize: 16}}>Connect Wallet</button>
-          ) : (
-              <p>Connected: {account.slice(0, 6)}...{account.slice(-4)}</p>
-          )}
+      {!account ? (
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 10 }}>
+          <button onClick={connectWallet} style={{padding: 10, fontSize: 16}}>Connect Wallet</button>
+        </div>
+      ) : (
+        <p style={{ textAlign: "center" }}>Connected: {account.slice(0, 6)}...{account.slice(-4)}</p>
+      )}
 
-          <hr/>
+      <hr />
 
-          <div style={{marginBottom: 20}}>
-              <input
-                  placeholder="Bet Amount (ETH)"
-                  value={betAmount}
-                  onChange={(e) => setBetAmount(e.target.value)}
-                  style={{width: "100px", marginRight: "10px"}}
-              />
-              <button onClick={createGame} disabled={loading}>Create New Game</button>
-              <br/><br/>
-              <input
-                  placeholder="Game ID"
-                  value={gameId}
-                  onChange={(e) => setGameId(e.target.value)}
-                  style={{width: "100px", marginRight: "10px"}}
-              />
-              <button onClick={joinGame} disabled={loading} style={{marginRight: "10px"}}>Join Game</button>
-              <button onClick={fetchGameState}>Load Gane</button>
-          </div>
-
-          {status && <div
-              style={{background: "#333", color: "#fff", padding: 10, marginBottom: 10, borderRadius: 4}}>{status}</div>}
-
-          <div style={{height: 500, width: 500, margin: "0 auto"}}>
-              <Chessboard
-                  id="BasicBoard"
-                  position={chessPosition}
-                  onPieceDrop={onDrop}
-                  boardWidth={500}
-                  boardOrientation={boardOrientation}
-                  arePiecesDraggable={canMovePieces}
-              />
-          </div>
-
-          <div style={{marginTop: 12, textAlign: "center"}}>
-              <input
-                  value={uciInput}
-                  onChange={(e) => setUciInput(e.target.value)}
-                  placeholder="UCI (e.g. e2e4)"
-                  style={{marginRight: 8, padding: 5}}
-              />
-              <button onClick={submitUciMove} disabled={!canMovePieces}>
-                  Make Move
-              </button>
-          </div>
-
-          {gameState && (
-            <div style={{
-              marginTop: 20,
-              padding: 10,
-              border: "1px solid #ccc",
-              borderRadius: 8,
-              width: "100%",
-              maxWidth: 500,
-              alignSelf: "flex-start",
-              textAlign: "left"
-            }}>
-                 <p><strong>Status:</strong> {statusText(gameState.status)}</p>
-                 <p><strong>Turn:</strong> {gameState.isWhiteTurn ? "White" : "Black"}</p>
-                 {moveTimeoutSec != null && (
-                   <p><strong>Time to turn:</strong> {formatDuration(remainingSeconds)}</p>
-                 )}
-                <div style={{ fontSize: "0.9em", color: "#666" }}>
-                     <p>White: {gameState.playerWhite}</p>
-                     <p>Black: {gameState.playerBlack}</p>
-                 </div>
-                <div style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 8,
-                  marginTop: 10,
-                  alignItems: "stretch"
-                }}>
-                   <button
-                     onClick={claimTimeout}
-                     disabled={(!gameState.isActive) || (remainingSeconds != null && remainingSeconds > 0)}
-                     style={{cursor: "pointer"}}
-                   >
-                     Claim Timeout
-                   </button>
-                   <button onClick={resign} disabled={!canResign} style={{cursor: "pointer"}}>Resign</button>
-                   <button onClick={cancel} disabled={!canCancel} style={{cursor: "pointer"}}>Cancel Game</button>
-                   <button onClick={offerDraw} disabled={!canOfferDraw} style={{cursor: "pointer"}}>Offer Draw</button>
-                   <button onClick={acceptDraw} disabled={!canAcceptDraw} style={{cursor: "pointer"}}>Accept Draw</button>
-                 </div>
-             </div>
-          )}
+      <div style={{marginBottom: 20, textAlign: "center"}}>
+        <input
+          placeholder="Bet Amount (ETH)"
+          value={betAmount}
+          onChange={(e) => setBetAmount(e.target.value)}
+          style={{width: "120px", marginRight: "10px"}}
+        />
+        <button onClick={createGame} disabled={loading}>Create New Game</button>
+        <br /><br />
+        <input
+          placeholder="Game ID"
+          value={gameId}
+          onChange={(e) => setGameId(e.target.value)}
+          style={{width: "120px", marginRight: "10px"}}
+        />
+        <button onClick={joinGame} disabled={loading} style={{marginRight: "10px"}}>Join Game</button>
+        <button onClick={fetchGameState}>Refresh</button>
       </div>
+
+      {status && <div style={{background: "#333", color: "#fff", padding: 10, marginBottom: 10, borderRadius: 4, textAlign: "center"}}>{status}</div>}
+
+      <div style={{ display: "flex", gap: 24, alignItems: "flex-start", justifyContent: "center" }}>
+        {/* Left column: status + actions */}
+        {gameState && (
+          <div style={{
+            padding: 12,
+            border: "1px solid #ccc",
+            borderRadius: 8,
+            width: 300,
+            height: 500,
+            textAlign: "left",
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "flex-start",
+            alignItems: "center"
+          }}>
+            <div style={{ width: "100%" }}>
+              <p><strong>Status:</strong> {statusText(gameState.status)}</p>
+              <p><strong>Turn:</strong> {gameState.isWhiteTurn ? "White" : "Black"}</p>
+              {moveTimeoutSec != null && (
+                <p><strong>Time to turn:</strong> {formatDuration(remainingSeconds)}</p>
+              )}
+              <div style={{ fontSize: "0.8em", color: "#666" }}>
+                <p>White: {gameState.playerWhite}</p>
+                <p>Black: {gameState.playerBlack}</p>
+              </div>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10, alignItems: "center", width: "100%" }}>
+              <button
+                onClick={claimTimeout}
+                disabled={(!gameState.isActive) || (remainingSeconds != null && remainingSeconds > 0)}
+                style={{cursor: "pointer", width: "200px"}}
+              >
+                Claim Timeout
+              </button>
+              <button onClick={resign} disabled={!canResign} style={{cursor: "pointer", width: "200px"}}>Resign</button>
+              <button onClick={cancel} disabled={!canCancel} style={{cursor: "pointer", width: "200px"}}>Cancel Game</button>
+              <button onClick={offerDraw} disabled={!canOfferDraw} style={{cursor: "pointer", width: "200px"}}>Offer Draw</button>
+              <button onClick={acceptDraw} disabled={!canAcceptDraw} style={{cursor: "pointer", width: "200px"}}>Accept Draw</button>
+            </div>
+          </div>
+        )}
+
+        {/* Right column: board + move input */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+          <div style={{height: 500, width: 500}}>
+            <Chessboard
+              id="BasicBoard"
+              position={chessPosition}
+              onPieceDrop={onDrop}
+              boardWidth={500}
+              boardOrientation={boardOrientation}
+              arePiecesDraggable={canMovePieces}
+            />
+          </div>
+          <div style={{marginTop: 12}}>
+            <input
+              value={uciInput}
+              onChange={(e) => setUciInput(e.target.value)}
+              placeholder="UCI (e.g. e2e4)"
+              style={{marginRight: 8, padding: 5}}
+            />
+            <button onClick={submitUciMove} disabled={!canMovePieces}>Make Move</button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
