@@ -154,7 +154,8 @@ function App() {
           isActive,
           isWhiteTurn: g.isWhiteTurn,
           isDrawOffered: Boolean(g.isDrawOffered),
-          lastMoveTime: lastTs
+          lastMoveTime: lastTs,
+          betAmount: g.betAmount
         });
 
         // compute initial remaining
@@ -204,6 +205,16 @@ function App() {
     const sec = s % 60;
     if (h > 0) return `${h}h ${m}m ${sec}s`;
     return `${m}m ${sec}s`;
+  };
+
+  const formatEth = (wei) => {
+    if (wei == null) return "";
+    try {
+      return `${ethers.formatEther(wei)} ETH`;
+    } catch {
+      // allow Number or bigint
+      return `${wei} wei`;
+    }
   };
 
   //  GAME ACTIONS
@@ -560,7 +571,8 @@ function App() {
             border: "1px solid #ccc",
             borderRadius: 8,
             width: 300,
-            height: 500,
+            // height: 550,
+            maxHeight: 800,
             textAlign: "left",
             display: "flex",
             flexDirection: "column",
@@ -573,6 +585,7 @@ function App() {
               {moveTimeoutSec != null && (
                 <p><strong>Time to turn:</strong> {formatDuration(remainingSeconds)}</p>
               )}
+                <p><strong>Total pot:</strong> {formatEth(gameState.betAmount)}</p>
               <div style={{ fontSize: "0.8em", color: "#666" }}>
                 <p>White: {gameState.playerWhite}</p>
                 <p>Black: {gameState.playerBlack}</p>
