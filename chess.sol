@@ -7,6 +7,7 @@ event GameCreated(uint256 indexed gameId, address whitePlayer, uint256 betAmount
 event GameStarted(uint256 indexed gameId, address whitePlayer, address blackPlayer);
 event MoveMade(uint256 indexed gameId, address player, string newFen);
 event GameEnded(uint256 indexed gameId, address winner, string reason);
+event OfferedDraw(uint256 indexed gameId, address player);
 
 
 
@@ -18,7 +19,7 @@ contract Chess {
     mapping(uint256 => Game) public games;
 
     enum Status{
-        InProgress, WhiteWon, BlackWon, Draw, Cancelled, WaitingForOpponent
+        InProgress, WhiteWon, BlackWon, Draw, Cancelled, WaitingForOpponent // todo move WaitingForOpponent to the beginning
     }
 
 
@@ -252,6 +253,7 @@ contract Chess {
         Game storage game = _getActiveGame(_gameId);
         _checkNotYourMoveOrder(game);
         game.isDrawOffered = true;
+        emit OfferedDraw(_gameId, msg.sender);
     }
 
     function acceptDraw(uint256 _gameId) public {
