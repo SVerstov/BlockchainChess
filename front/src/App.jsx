@@ -27,7 +27,10 @@ const ABI = [
     "function offerDraw(uint256 _gameId) public",
     "function acceptDraw(uint256 _gameId) public",
     "event MoveMade(uint256 indexed gameId, address player, string newFen)",
-    "event GameEnded(uint256 indexed gameId, address winner, string reason)"
+    "event GameEnded(uint256 indexed gameId, address winner, string reason)",
+    "event GameCreated(uint256 indexed gameId, address whitePlayer, uint256 betAmount)",
+    "event GameStarted(uint256 indexed gameId, address whitePlayer, address blackPlayer)",
+    "event OfferedDraw(uint256 indexed gameId, address player)"
 ];
 
 const normalizeAddr = (addr) => (addr ? addr.toLowerCase() : "");
@@ -51,6 +54,7 @@ function App() {
   const [uciInput, setUciInput] = useState("");
   const [moveTimeoutSec, setMoveTimeoutSec] = useState(null);
   const [remainingSeconds, setRemainingSeconds] = useState(null);
+  const [copyMsg, setCopyMsg] = useState("");
 
   const connectWallet = async () => {
       if (window.ethereum) {
@@ -204,14 +208,79 @@ function App() {
 
   //  GAME ACTIONS
 
+  const extractGameIdFromReceipt = async (receipt) => {
+    // 1) Try direct log parse from receipt
+    try {
+      for (const log of receipt.logs) {
+        try {
+          const parsed = contract.interface.parseLog(log);
+          if (parsed?.name === "GameCreated") {
+            return parsed.args.gameId?.toString();
+          }
+        } catch (_) {}
+      }
+    } catch (_) {}
+
+    // 2) Fallback: query the chain for GameCreated in the same block range
+    try {
+      const fromBlock = receipt.blockNumber;
+      const toBlock = receipt.blockNumber;
+      const filter = contract.filters.GameCreated?.();
+      const events = await contract.queryFilter(filter, fromBlock, toBlock);
+      if (events && events.length > 0) {
+        // If multiple events in the block, try to pick the one by tx hash
+        const matched = events.find(ev => ev.transactionHash === receipt.hash) || events[0];
+        const gid = matched?.args?.gameId;
+        if (gid != null) return gid.toString();
+      }
+    } catch (e) {
+      console.warn("Fallback queryFilter failed:", e);
+    }
+
+    // 3) Last resort: retry querying for a short time (indexers may lag)
+    for (let i = 0; i < 5; i++) { // ~5 retries
+      try {
+        await new Promise(r => setTimeout(r, 1500));
+        const filter = contract.filters.GameCreated?.();
+        const events = await contract.queryFilter(filter, receipt.blockNumber - 2, receipt.blockNumber + 2);
+        const matched = events.find(ev => ev.transactionHash === receipt.hash);
+        if (matched) {
+          const gid = matched.args?.gameId;
+          if (gid != null) return gid.toString();
+        }
+      } catch (_) {}
+    }
+    return null;
+  };
+
   const createGame = async () => {
       if (!contract) return;
       try {
           setLoading(true);
           const tx = await contract.newGame({value: ethers.parseEther(betAmount)});
           setStatus("Creating game... Waiting for tx");
-          await tx.wait();
-          setStatus("Game created! Check logs or refresh.");
+          const receipt = await tx.wait();
+
+          // Robustly get gameId
+          setStatus("Parsing GameCreated event...");
+          let newGameId = await extractGameIdFromReceipt(receipt);
+
+          if (!newGameId) {
+            setStatus("Still waiting for GameCreated... trying again");
+            // Short extra wait to allow event indexing
+            newGameId = await extractGameIdFromReceipt(receipt);
+          }
+
+          if (!newGameId) {
+            setStatus("Game created, but unable to parse event yet. Enter the ID or check explorer.");
+          } else {
+            setGameId(newGameId);
+            setStatus(`Game created! ID: ${newGameId}`);
+            const url = new URL(window.location);
+            url.searchParams.set("gameId", newGameId);
+            window.history.pushState({}, "", url);
+            await fetchGameState();
+          }
       } catch (e) {
           console.error(e);
           alert("Error creating game");
@@ -395,6 +464,24 @@ function App() {
     } finally { setLoading(false); }
   }
 
+  const copyText = async (text) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyMsg("Copied!");
+      setTimeout(() => setCopyMsg(""), 1500);
+    } catch (e) {
+      console.warn("Clipboard failed", e);
+      setCopyMsg("Copy failed");
+      setTimeout(() => setCopyMsg(""), 1500);
+    }
+  };
+
+  const shareUrl = () => {
+    const url = new URL(window.location);
+    if (gameId) url.searchParams.set("gameId", gameId);
+    return url.toString();
+  };
+
   const canMovePieces = !loading &&
                       gameState &&
                       gameState.isActive &&
@@ -435,7 +522,7 @@ function App() {
       <div style={{marginBottom: 20, textAlign: "center"}}>
         <input
           placeholder="Bet Amount (ETH)"
-          value={betAmount}
+          // value={betAmount}
           onChange={(e) => setBetAmount(e.target.value)}
           style={{width: "120px", marginRight: "10px"}}
         />
@@ -445,13 +532,25 @@ function App() {
           placeholder="Game ID"
           value={gameId}
           onChange={(e) => setGameId(e.target.value)}
-          style={{width: "120px", marginRight: "10px"}}
+          style={{width: "70px", marginRight: "10px"}}
         />
-        <button onClick={joinGame} disabled={loading} style={{marginRight: "10px"}}>Join Game</button>
-        <button onClick={fetchGameState}>Refresh</button>
+        <button onClick={fetchGameState} style={{marginRight: "10px"}}>Load</button>
+        <button onClick={joinGame} disabled={!gameId || !isWaitingForOpponent || amWhite} style={{marginRight: "10px"}} >Join</button>
+        <button onClick={() => copyText(shareUrl())} disabled={!gameId} style={{marginLeft: "10px"}}>Copy Link to Game</button>
+        {copyMsg && <span style={{marginLeft: 8, color: "#2c7"}}>{copyMsg}</span>}
       </div>
 
-      {status && <div style={{background: "#333", color: "#fff", padding: 10, marginBottom: 10, borderRadius: 4, textAlign: "center"}}>{status}</div>}
+      {status && (
+        <div style={{background: "#333", color: "#fff", padding: 10, marginBottom: 10, borderRadius: 4, textAlign: "center"}}>
+          {status}
+          {gameId && status.startsWith("Game created!") && (
+            <div style={{marginTop: 8}}>
+              <a href={shareUrl()} target="_blank" rel="noreferrer">Open game link</a>
+              <button onClick={() => copyText(shareUrl())} style={{marginLeft: 10}}>Copy Link</button>
+            </div>
+          )}
+        </div>
+      )}
 
       <div style={{ display: "flex", gap: 24, alignItems: "flex-start", justifyContent: "center" }}>
         {/* Left column: status + actions */}
