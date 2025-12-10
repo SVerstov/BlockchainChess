@@ -147,7 +147,7 @@ function App() {
         const currentStatus = Number(g.status);
         const isActive = currentStatus === 0; // InProgress
         const lastTs = Number(g.lastMoveTimestamp);
-        setGameState({
+        const nextState = {
           playerWhite: pWhite,
           playerBlack: pBlack,
           status: currentStatus,
@@ -156,7 +156,8 @@ function App() {
           isDrawOffered: Boolean(g.isDrawOffered),
           lastMoveTime: lastTs,
           betAmount: g.betAmount
-        });
+        };
+        setGameState(nextState);
 
         // compute initial remaining
         if (moveTimeoutSec != null && lastTs > 0) {
@@ -172,10 +173,21 @@ function App() {
             setBoardOrientation("white");
         }
 
+        // update status banner to "Your Turn!" when applicable
+        const amWhiteLocal = account && account === pWhite;
+        const amBlackLocal = account && account === pBlack;
+        const isMyTurnLocal = (g.isWhiteTurn && amWhiteLocal) || (!g.isWhiteTurn && amBlackLocal);
+        if (isActive && isMyTurnLocal) {
+          setStatus("Your Turn!");
+        } else if (status === "Your Turn!") {
+          // clear turn banner when it's no longer your turn
+          setStatus("");
+        }
+
       } catch (e) {
           console.error("Error fetching game:", e);
       }
-  }, [contract, gameId, game, account, moveTimeoutSec]);
+  }, [contract, gameId, game, account, moveTimeoutSec, status]);
 
   // Update game polling and countdown timer
   useEffect(() => {
