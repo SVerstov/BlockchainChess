@@ -47,7 +47,7 @@ function App() {
 
     // Game state
     const [gameId, setGameId] = useState("");
-    const [betAmount, setBetAmount] = useState("0.001");
+    const [betAmount, setBetAmount] = useState("0.00");
     const [gameState, setGameState] = useState(null);
     const [loading, setLoading] = useState(false);
     const [status, setStatus] = useState("");
